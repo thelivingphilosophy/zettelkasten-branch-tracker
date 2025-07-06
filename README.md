@@ -31,7 +31,7 @@ Handles complex ID formats including:
 - Linear continuations: `1114a1`, `1114a2`
 
 ## Demo
-Watch the plugin in action (50 seconds)
+Watch the plugin in action (50 seconds):
 
 [![Zettelkasten Branch Tracker Demo](demo-screenshot.png)](https://youtu.be/-6eOcmby95A)
 
