@@ -107,7 +107,7 @@ Configure default behaviour in Settings → Plugin Options → Zettelkasten Bran
 ## Development Status
 
 ### ✅ **Completed Features**
-- Complete hierarchy parsing and visualization
+- Complete hierarchy parsing and visualisation
 - Interactive controls and navigation
 - Smooth animations and hover effects
 - Auto-update functionality
@@ -116,15 +116,7 @@ Configure default behaviour in Settings → Plugin Options → Zettelkasten Bran
 
 ### 🔧 **Known Issues**
 - Some edge cases in hierarchy parsing for very complex IDs
-- Performance optimization needed for vaults with 1000+ notes
 - Mobile responsiveness could be improved
-
-### 🚀 **Planned Features**
-- **Search integration**: Find and highlight specific notes in the graph
-- **Export options**: Save graph views as images
-- **Custom color schemes**: User-defined color palettes
-- **Performance optimisation**: Better handling of large note collections
-- **Mobile optimization**: Improved touch interactions
 
 ## Technical Notes
 
