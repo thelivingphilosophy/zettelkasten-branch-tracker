@@ -32,7 +32,7 @@ Handles complex ID formats including:
 
 ## Demo
 
-[🎥 Watch the plugin in action](https://youtu.be/-6eOcmby95A)
+[![Zettelkasten Branch Tracker Demo](demo-screenshot.png)](https://youtu.be/-6eOcmby95A)
 
 ## Installation
 
