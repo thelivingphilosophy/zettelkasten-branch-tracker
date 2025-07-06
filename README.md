@@ -30,6 +30,10 @@ Handles complex ID formats including:
 - Mixed notation: `2311.4b1.1b1.2.4`
 - Linear continuations: `1114a1`, `1114a2`
 
+## Demo
+
+[🎥 Watch the plugin in action](https://youtu.be/-6eOcmby95A)
+
 ## Installation
 
 ### Manual Installation
