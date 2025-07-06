@@ -1,0 +1,11 @@
+{
+	"id": "zettelkasten-branch-tracker",
+	"name": "Zettelkasten Branch Tracker",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Track and visualize the branching structure of your Zettelkasten notes",
+	"author": "Your Name",
+	"authorUrl": "",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}
