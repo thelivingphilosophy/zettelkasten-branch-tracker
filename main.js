@@ -1,4 +1,4 @@
-const { Plugin, ItemView, PluginSettingTab, Setting } = require('obsidian');
+const { Plugin, ItemView, PluginSettingTab, Setting, Notice } = require('obsidian');
 
 const DEFAULT_SETTINGS = {
     showDepth: 2,
@@ -28,12 +28,61 @@ class ZettelkastenBranchTracker extends Plugin {
             }
         });
 
+        // Navigation hotkeys
+        this.addCommand({
+            id: 'navigate-to-next-sibling',
+            name: 'Navigate to next sibling',
+            callback: () => {
+                this.navigateToSibling('next');
+            }
+        });
+
+        this.addCommand({
+            id: 'navigate-to-previous-sibling',
+            name: 'Navigate to previous sibling',
+            callback: () => {
+                this.navigateToSibling('previous');
+            }
+        });
+
+        this.addCommand({
+            id: 'navigate-to-parent',
+            name: 'Navigate to parent note',
+            callback: () => {
+                this.navigateToParent();
+            }
+        });
+
+        this.addCommand({
+            id: 'navigate-to-first-child',
+            name: 'Navigate to first child',
+            callback: () => {
+                this.navigateToFirstChild();
+            }
+        });
+
+        this.addCommand({
+            id: 'navigate-to-next-continuation',
+            name: 'Navigate to next linear continuation',
+            callback: () => {
+                this.navigateToContinuation('next');
+            }
+        });
+
+        this.addCommand({
+            id: 'navigate-to-previous-continuation',
+            name: 'Navigate to previous linear continuation',
+            callback: () => {
+                this.navigateToContinuation('previous');
+            }
+        });
+
         this.addSettingTab(new ZettelkastenSettingTab(this.app, this));
     }
 
     async activateView() {
         const { workspace } = this.app;
-        
+
         let leaf = null;
         const leaves = workspace.getLeavesOfType('zettelkasten-branch-view');
 
@@ -46,7 +95,170 @@ class ZettelkastenBranchTracker extends Plugin {
 
         workspace.revealLeaf(leaf);
     }
+    async navigateToSibling(direction) {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+            new Notice('No active file');
+            return;
+        }
 
+        const currentZettelId = this.parseZettelId(activeFile.basename);
+        if (!currentZettelId) {
+            new Notice('Current file is not a Zettelkasten note');
+            return;
+        }
+
+        const zettelNotes = this.getZettelNotes();
+        const parentId = this.findParentId(currentZettelId);
+
+        if (!parentId) {
+            new Notice('Current note has no parent (cannot find siblings)');
+            return;
+        }
+
+        // Get all siblings including current note
+        const allSiblings = this.findChildIds(parentId, zettelNotes);
+        const sortedSiblings = allSiblings.sort(this.compareZettelIds.bind(this));
+
+        const currentIndex = sortedSiblings.indexOf(currentZettelId);
+        if (currentIndex === -1) {
+            new Notice('Could not find current note among siblings');
+            return;
+        }
+
+        let targetIndex;
+        if (direction === 'next') {
+            targetIndex = currentIndex + 1;
+            if (targetIndex >= sortedSiblings.length) {
+                new Notice('Already at last sibling');
+                return;
+            }
+        } else {
+            targetIndex = currentIndex - 1;
+            if (targetIndex < 0) {
+                new Notice('Already at first sibling');
+                return;
+            }
+        }
+
+        const targetZettelId = sortedSiblings[targetIndex];
+        const targetFile = zettelNotes.get(targetZettelId);
+
+        if (targetFile) {
+            await this.app.workspace.getLeaf(false).openFile(targetFile);
+        } else {
+            new Notice(`Target sibling note not found: ${targetZettelId}`);
+        }
+    }
+
+    async navigateToParent() {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+            new Notice('No active file');
+            return;
+        }
+
+        const currentZettelId = this.parseZettelId(activeFile.basename);
+        if (!currentZettelId) {
+            new Notice('Current file is not a Zettelkasten note');
+            return;
+        }
+
+        const parentId = this.findParentId(currentZettelId);
+        if (!parentId) {
+            new Notice('Current note has no parent');
+            return;
+        }
+
+        const zettelNotes = this.getZettelNotes();
+        const parentFile = zettelNotes.get(parentId);
+
+        if (parentFile) {
+            await this.app.workspace.getLeaf(false).openFile(parentFile);
+        } else {
+            new Notice(`Parent note not found: ${parentId}`);
+        }
+    }
+
+    async navigateToFirstChild() {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+            new Notice('No active file');
+            return;
+        }
+
+        const currentZettelId = this.parseZettelId(activeFile.basename);
+        if (!currentZettelId) {
+            new Notice('Current file is not a Zettelkasten note');
+            return;
+        }
+
+        const zettelNotes = this.getZettelNotes();
+        const children = this.findChildIds(currentZettelId, zettelNotes);
+
+        if (children.length === 0) {
+            new Notice('Current note has no children');
+            return;
+        }
+    }
+        
+    async navigateToContinuation(direction) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+        new Notice('No active file');
+        return;
+    }
+
+    const currentZettelId = this.parseZettelId(activeFile.basename);
+    if (!currentZettelId) {
+        new Notice('Current file is not a Zettelkasten note');
+        return;
+    }
+
+    const zettelNotes = this.getZettelNotes();
+    
+    if (direction === 'next') {
+        // Find continuations of current note
+        const continuations = this.findLinearContinuations(currentZettelId, zettelNotes);
+        if (continuations.length === 0) {
+            new Notice('No linear continuations found');
+            return;
+        }
+        
+        const firstContinuation = continuations[0];
+        const targetFile = zettelNotes.get(firstContinuation);
+        
+        if (targetFile) {
+            await this.app.workspace.getLeaf(false).openFile(targetFile);
+        }
+    } else {
+        // Find what this note is a continuation of
+        const allNotes = Array.from(zettelNotes.keys());
+        const possibleBase = allNotes.find(noteId => {
+            const continuations = this.findLinearContinuations(noteId, zettelNotes);
+            return continuations.includes(currentZettelId);
+        });
+        
+        if (possibleBase) {
+            const baseFile = zettelNotes.get(possibleBase);
+            if (baseFile) {
+                await this.app.workspace.getLeaf(false).openFile(baseFile);
+            }
+        } else {
+            new Notice('This note is not a linear continuation');
+        }
+    }
+
+        const sortedChildren = children.sort(this.compareZettelIds.bind(this));
+        const firstChildId = sortedChildren[0];
+        const firstChildFile = zettelNotes.get(firstChildId);
+
+        if (firstChildFile) {
+            await this.app.workspace.getLeaf(false).openFile(firstChildFile);
+        } else {
+            new Notice(`First child note not found: ${firstChildId}`);
+        }
+    }
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     }
@@ -62,28 +274,28 @@ class ZettelkastenBranchTracker extends Plugin {
 
     findParentId(zettelId) {
         // Handle different patterns in order of specificity
-        
+
         // Pattern 1: Remove trailing number after letter (like 5301.1.2.1.1.2b1 -> 5301.1.2.1.1.2b)
         if (zettelId.match(/[a-z]\d+$/)) {
             return zettelId.replace(/\d+$/, '');
         }
-        
+
         // Pattern 2: Remove trailing letter(s) (like 5301.1.2.1.1.2a -> 5301.1.2.1.1.2)
         if (zettelId.match(/[a-z]+$/)) {
             return zettelId.replace(/[a-z]+$/, '');
         }
-        
+
         // Pattern 3: Remove last dot+number (like 5301.1.2.1.1.2 -> 5301.1.2.1.1)
         if (zettelId.match(/\.\d+$/)) {
             return zettelId.replace(/\.\d+$/, '');
         }
-        
+
         return null;
     }
 
     getZettelNotes() {
         const zettelNotes = new Map();
-        
+
         this.app.vault.getMarkdownFiles().forEach(file => {
             const zettelId = this.parseZettelId(file.basename);
             if (zettelId) {
@@ -97,20 +309,20 @@ class ZettelkastenBranchTracker extends Plugin {
     buildZettelNetwork(currentZettelId, maxDepth = 2, maxBranches = 5) {
         const zettelNotes = this.getZettelNotes();
         const currentFile = zettelNotes.get(currentZettelId);
-        
+
         if (!currentFile) return null;
 
         const nodes = new Map();
         const edges = [];
-        
+
         if (maxDepth >= 1) {
             this.addParentTier(currentZettelId, zettelNotes, nodes, edges, maxBranches);
         }
-        
+
         if (maxDepth >= 2) {
             this.addGrandparentTier(currentZettelId, zettelNotes, nodes, edges, maxBranches);
         }
-        
+
         if (maxDepth >= 3) {
             this.addGreatGrandparentTier(currentZettelId, zettelNotes, nodes, edges, maxBranches);
         }
@@ -126,31 +338,31 @@ class ZettelkastenBranchTracker extends Plugin {
 
     calculateNodeDepth(nodeId, zettelNotes) {
         let totalSubnotes = 0;
-        
+
         // Count all notes that are descendants of this node
         for (const zettelId of zettelNotes.keys()) {
             if (zettelId.startsWith(nodeId) && zettelId !== nodeId) {
                 totalSubnotes++;
             }
         }
-        
+
         return totalSubnotes;
     }
 
     addDepthDataToNodes(network, zettelNotes, currentZettelId) {
         const depthValues = [];
-        
+
         // Build current note lineage to exclude from scaling
         const currentLineage = new Set();
         currentLineage.add(currentZettelId); // Current note
-        
+
         // Add parents/grandparents to lineage
         let parentId = this.findParentId(currentZettelId);
         while (parentId) {
             currentLineage.add(parentId);
             parentId = this.findParentId(parentId);
         }
-        
+
         // Calculate depth for children (level 1), siblings (level -1), aunts/uncles (level -2), and sequential continuations (level 0)
         // BUT exclude nodes in the current lineage
         for (const [nodeId, node] of network.nodes.entries()) {
@@ -160,9 +372,9 @@ class ZettelkastenBranchTracker extends Plugin {
                 depthValues.push(depth);
             }
         }
-        
+
         if (depthValues.length === 0) return; // No nodes to process
-        
+
         // Calculate percentiles for scaling (among all depth-tracked nodes)
         depthValues.sort((a, b) => a - b);
         const maxDepth = Math.max(...depthValues);
@@ -183,10 +395,10 @@ class ZettelkastenBranchTracker extends Plugin {
     addGreatGrandparentTier(currentZettelId, zettelNotes, nodes, edges, maxBranches) {
         const grandparentId = this.findGrandparentId(currentZettelId);
         if (!grandparentId) return;
-        
+
         const greatGrandparentId = this.findParentId(grandparentId);
         if (!greatGrandparentId || !zettelNotes.has(greatGrandparentId)) return;
-        
+
         const greatGrandparentFile = zettelNotes.get(greatGrandparentId);
         const greatGrandparentNode = {
             id: greatGrandparentId,
@@ -196,15 +408,15 @@ class ZettelkastenBranchTracker extends Plugin {
             position: { x: 0, y: -240 }
         };
         nodes.set(greatGrandparentId, greatGrandparentNode);
-        
+
         const greatAuntsUncles = this.findChildIds(greatGrandparentId, zettelNotes)
             .filter(id => id !== grandparentId);
         const closestGreatAuntsUncles = this.getClosestSiblings(grandparentId, greatAuntsUncles, maxBranches);
-        
+
         if (closestGreatAuntsUncles.length > 0) {
             closestGreatAuntsUncles.forEach((auntUncleId, index) => {
                 const auntUncleFile = zettelNotes.get(auntUncleId);
-                
+
                 let auntUncleX;
                 if (closestGreatAuntsUncles.length === 1) {
                     auntUncleX = 0;
@@ -214,7 +426,7 @@ class ZettelkastenBranchTracker extends Plugin {
                     const startX = -totalWidth / 2;
                     auntUncleX = startX + (index * spacing);
                 }
-                
+
                 const auntUncleNode = {
                     id: auntUncleId,
                     title: auntUncleFile.basename,
@@ -226,14 +438,14 @@ class ZettelkastenBranchTracker extends Plugin {
                 edges.push({ from: greatGrandparentId, to: auntUncleId, type: 'parent-child' });
             });
         }
-        
+
         edges.push({ from: greatGrandparentId, to: grandparentId, type: 'parent-child' });
     }
 
     addGrandparentTier(currentZettelId, zettelNotes, nodes, edges, maxBranches) {
         const grandparentId = this.findGrandparentId(currentZettelId);
         if (!grandparentId || !zettelNotes.has(grandparentId)) return;
-        
+
         const grandparentFile = zettelNotes.get(grandparentId);
         const grandparentNode = {
             id: grandparentId,
@@ -243,43 +455,43 @@ class ZettelkastenBranchTracker extends Plugin {
             position: { x: 0, y: -160 }
         };
         nodes.set(grandparentId, grandparentNode);
-        
+
         const parentId = this.findParentId(currentZettelId);
         const auntsUncles = this.findChildIds(grandparentId, zettelNotes)
             .filter(id => id !== parentId);
-        
+
         // Filter out linear continuations of the grandparent
         const trueAuntsUncles = auntsUncles.filter(auntUncleId => {
             const remainder = auntUncleId.substring(grandparentId.length);
-            
+
             // If remainder is just letters (like 'a', 'b'), it's a grandparent continuation, not an aunt/uncle
             if (remainder.match(/^[a-z]+$/)) {
                 return false; // Exclude these
             }
-            
+
             // If remainder is just numbers (like '1', '2'), it's a grandparent continuation, not an aunt/uncle  
             if (remainder.match(/^\d+$/)) {
                 return false; // Exclude these
             }
-            
+
             // Keep everything else (like .1, .2, .3 which are true children)
             return true;
         });
-        
+
         const closestAuntsUncles = this.getClosestSiblings(parentId || currentZettelId, trueAuntsUncles, maxBranches);
 
         if (closestAuntsUncles.length > 0) {
             closestAuntsUncles.forEach((auntUncleId, index) => {
                 const auntUncleFile = zettelNotes.get(auntUncleId);
-                
+
                 // Always spread aunts/uncles around center, never AT center
                 const spacing = 150;
                 const totalPositions = closestAuntsUncles.length;
-                
+
                 // Calculate position that skips 0 (center)
                 let position;
                 const halfCount = Math.floor(totalPositions / 2);
-                
+
                 if (index < halfCount) {
                     // Left side: -halfCount, -halfCount+1, ..., -1
                     position = -(halfCount - index);
@@ -287,9 +499,9 @@ class ZettelkastenBranchTracker extends Plugin {
                     // Right side: +1, +2, ..., +remaining
                     position = index - halfCount + 1;
                 }
-                
+
                 const auntUncleX = position * spacing;
-                
+
                 const auntUncleNode = {
                     id: auntUncleId,
                     title: auntUncleFile.basename,
@@ -301,7 +513,7 @@ class ZettelkastenBranchTracker extends Plugin {
                 edges.push({ from: grandparentId, to: auntUncleId, type: 'parent-child' });
             });
         }
-        
+
         if (parentId) {
             edges.push({ from: grandparentId, to: parentId, type: 'parent-child' });
         }
@@ -309,7 +521,7 @@ class ZettelkastenBranchTracker extends Plugin {
 
     addParentTier(currentZettelId, zettelNotes, nodes, edges, maxBranches) {
         const parentId = this.findParentId(currentZettelId);
-        
+
         if (!parentId) {
             const syntheticParent = this.findPreviousNoteInSequence(currentZettelId, zettelNotes);
             if (syntheticParent) {
@@ -326,9 +538,9 @@ class ZettelkastenBranchTracker extends Plugin {
             }
             return;
         }
-        
+
         if (!zettelNotes.has(parentId)) return;
-        
+
         const parentFile = zettelNotes.get(parentId);
         const parentNode = {
             id: parentId,
@@ -341,13 +553,13 @@ class ZettelkastenBranchTracker extends Plugin {
 
         const allSiblings = this.findChildIds(parentId, zettelNotes)
             .filter(id => id !== currentZettelId);
-        
+
         const closestSiblings = this.getClosestSiblings(currentZettelId, allSiblings, maxBranches);
-        
+
         if (closestSiblings.length > 0) {
             closestSiblings.forEach((siblingId, index) => {
                 const siblingFile = zettelNotes.get(siblingId);
-                
+
                 let siblingX;
                 if (closestSiblings.length === 1) {
                     siblingX = 0;
@@ -357,7 +569,7 @@ class ZettelkastenBranchTracker extends Plugin {
                     const startX = -totalWidth / 2;
                     siblingX = startX + (index * spacing);
                 }
-                
+
                 const siblingNode = {
                     id: siblingId,
                     title: siblingFile.basename,
@@ -385,11 +597,11 @@ class ZettelkastenBranchTracker extends Plugin {
         nodes.set(currentZettelId, currentNode);
 
         const linearContinuations = this.findLinearContinuations(currentZettelId, zettelNotes);
-        
+
         linearContinuations.slice(0, Math.max(0, maxBranches - 1)).forEach((continuationId, index) => {
             const continuationFile = zettelNotes.get(continuationId);
             const continuationX = (index + 1) * 140;
-            
+
             const continuationNode = {
                 id: continuationId,
                 title: continuationFile.basename,
@@ -405,45 +617,45 @@ class ZettelkastenBranchTracker extends Plugin {
     addChildrenTier(currentZettelId, zettelNotes, nodes, edges, maxBranches) {
         // Find all potential children (anything that starts with current ID)
         const allChildren = this.findChildIds(currentZettelId, zettelNotes);
-        
+
         // Filter out linear continuations, keep only true dot-notation children
         const trueChildren = allChildren.filter(childId => {
             const remainder = childId.substring(currentZettelId.length);
-            
+
             // If remainder is just letters (like 'a', 'b'), it's a linear continuation, not a true child
             if (remainder.match(/^[a-z]+$/)) {
                 return false; // Exclude these
             }
-            
+
             // If remainder is just numbers (like '1', '2'), it's a linear continuation, not a true child  
             if (remainder.match(/^\d+$/)) {
                 return false; // Exclude these
             }
-            
+
             // If remainder has letter+numbers (like 'a1', 'b2'), it's a linear continuation
             if (remainder.match(/^[a-z]+\d+$/)) {
                 return false; // Exclude these
             }
-            
+
             // Keep only dot-notation children (like '.1', '.2', '.3')
             if (remainder.match(/^\.\d+/)) {
                 return true; // Keep these
             }
-            
+
             // Exclude anything else that doesn't match our expected patterns
             return false;
         });
-        
+
         const childrenToShow = trueChildren.slice(0, maxBranches);
-        
+
         if (childrenToShow.length === 0) {
             return;
         }
-        
+
         // Position children using simple centered spread
         childrenToShow.forEach((childId, index) => {
             const childFile = zettelNotes.get(childId);
-            
+
             let childX;
             if (childrenToShow.length === 1) {
                 childX = 0;
@@ -453,7 +665,7 @@ class ZettelkastenBranchTracker extends Plugin {
                 const startX = -totalWidth / 2;
                 childX = startX + (index * spacing);
             }
-            
+
             const childNode = {
                 id: childId,
                 title: childFile.basename,
@@ -474,20 +686,20 @@ class ZettelkastenBranchTracker extends Plugin {
 
     findPreviousNoteInSequence(zettelId, zettelNotes) {
         if (!/^\d+$/.test(zettelId)) return null;
-        
+
         const baseNumber = parseInt(zettelId);
-        
+
         const candidates = [
             Math.floor(baseNumber / 100) * 100,
             Math.floor(baseNumber / 1000) * 1000
         ];
-        
+
         for (const candidate of candidates) {
             if (candidate > 0 && candidate !== baseNumber && zettelNotes.has(String(candidate))) {
                 return String(candidate);
             }
         }
-        
+
         return null;
     }
 
@@ -505,22 +717,22 @@ class ZettelkastenBranchTracker extends Plugin {
 
     getClosestSiblings(currentId, allSiblings, maxBranches) {
         if (allSiblings.length === 0) return [];
-        
+
         const allSiblingsWithCurrent = [...allSiblings, currentId].sort(this.compareZettelIds.bind(this));
         const currentIndex = allSiblingsWithCurrent.indexOf(currentId);
-        
+
         const result = [];
         const remaining = maxBranches;
-        
+
         let leftIndex = currentIndex - 1;
         let rightIndex = currentIndex + 1;
-        
+
         for (let i = 0; i < remaining && result.length < allSiblings.length; i++) {
             const hasLeft = leftIndex >= 0 && allSiblingsWithCurrent[leftIndex] !== currentId;
             const hasRight = rightIndex < allSiblingsWithCurrent.length && allSiblingsWithCurrent[rightIndex] !== currentId;
-            
+
             if (!hasLeft && !hasRight) break;
-            
+
             if (hasLeft && (!hasRight || i % 2 === 0)) {
                 result.unshift(allSiblingsWithCurrent[leftIndex]);
                 leftIndex--;
@@ -529,13 +741,13 @@ class ZettelkastenBranchTracker extends Plugin {
                 rightIndex++;
             }
         }
-        
+
         return result.slice(0, maxBranches);
     }
 
     findLinearContinuations(baseId, zettelNotes) {
         const continuations = [];
-        
+
         for (const zettelId of zettelNotes.keys()) {
             if (zettelId.startsWith(baseId) && zettelId !== baseId) {
                 const remainder = zettelId.substring(baseId.length);
@@ -544,13 +756,13 @@ class ZettelkastenBranchTracker extends Plugin {
                 }
             }
         }
-        
+
         return continuations.sort(this.compareZettelIds.bind(this));
     }
 
     findTrueChildren(baseId, zettelNotes) {
         const children = [];
-        
+
         for (const zettelId of zettelNotes.keys()) {
             if (zettelId.startsWith(baseId) && zettelId !== baseId) {
                 const remainder = zettelId.substring(baseId.length);
@@ -559,32 +771,32 @@ class ZettelkastenBranchTracker extends Plugin {
                 }
             }
         }
-        
+
         return children.sort(this.compareZettelIds.bind(this));
     }
 
     findChildIds(parentId, zettelNotes) {
         const childIds = [];
-        
+
         for (const zettelId of zettelNotes.keys()) {
             const noteParent = this.findParentId(zettelId);
-            
+
             if (noteParent === parentId) {
                 childIds.push(zettelId);
             }
         }
-        
+
         return childIds.sort(this.compareZettelIds.bind(this));
     }
 
     compareZettelIds(a, b) {
         const partsA = a.split(/([a-z]+)/).filter(p => p);
         const partsB = b.split(/([a-z]+)/).filter(p => p);
-        
+
         for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
             const partA = partsA[i] || '';
             const partB = partsB[i] || '';
-            
+
             if (partA !== partB) {
                 if (!isNaN(Number(partA)) && !isNaN(Number(partB))) {
                     return Number(partA) - Number(partB);
@@ -592,7 +804,7 @@ class ZettelkastenBranchTracker extends Plugin {
                 return partA.localeCompare(partB);
             }
         }
-        
+
         return 0;
     }
 }
@@ -606,12 +818,12 @@ class ZettelkastenBranchView extends ItemView {
         this.zoom = 1.0;
         this.hoveredNode = null;
         this.panOffset = { x: 0, y: 0 };
-        
+
         this.mousePos = { x: 0, y: 0 };
         this.isDragging = false;
         this.dragStartPos = { x: 0, y: 0 };
         this.lastPanOffset = { x: 0, y: 0 };
-        
+
         this.showSubnoteCounts = true;
         this.autoUpdate = true;
 
@@ -620,7 +832,7 @@ class ZettelkastenBranchView extends ItemView {
         this.textOffsets = new Map();
         this.targetTextOffsets = new Map();
         this.animationSpeed = 0.15;
-        
+
         this.animationId = null;
         this.needsRender = true;
     }
@@ -636,23 +848,23 @@ class ZettelkastenBranchView extends ItemView {
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
-        
-        const controlsSection = container.createEl('div', { 
+
+        const controlsSection = container.createEl('div', {
             cls: 'zettelkasten-controls-section'
         });
         controlsSection.style.cssText = 'border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary);';
-        
+
         const controlsHeader = controlsSection.createEl('div', {
             cls: 'zettelkasten-controls-header'
         });
         controlsHeader.style.cssText = 'display: flex; align-items: center; padding: 8px 10px; cursor: pointer; user-select: none;';
-        
+
         const toggleIcon = controlsHeader.createEl('span', { text: '▼' });
         toggleIcon.style.cssText = 'margin-right: 8px; transition: transform 0.2s; font-size: 12px;';
-        
+
         controlsHeader.createEl('span', { text: 'Controls' });
-        
-        const controlsContainer = controlsSection.createEl('div', { 
+
+        const controlsContainer = controlsSection.createEl('div', {
             cls: 'zettelkasten-controls'
         });
         controlsContainer.style.cssText = 'padding: 8px 10px; display: block;';
@@ -669,7 +881,7 @@ class ZettelkastenBranchView extends ItemView {
                 toggleIcon.textContent = '▶';
                 toggleIcon.style.transform = 'rotate(-90deg)';
             }
-            
+
             setTimeout(() => {
                 this.updateCanvasContainerSize();
                 this.resizeCanvas();
@@ -681,12 +893,12 @@ class ZettelkastenBranchView extends ItemView {
         const slidersSection = controlsContainer.createEl('div');
         slidersSection.style.cssText = 'margin-bottom: 12px;';
 
-        const depthControl = slidersSection.createEl('div', { 
+        const depthControl = slidersSection.createEl('div', {
             cls: 'zettelkasten-control'
         });
         depthControl.style.cssText = 'display: flex; align-items: center; margin-bottom: 6px;';
 
-        depthControl.createEl('label', { 
+        depthControl.createEl('label', {
             text: 'Depth: '
         }).style.cssText = 'margin-right: 10px; min-width: 70px; font-size: 12px;';
 
@@ -698,17 +910,17 @@ class ZettelkastenBranchView extends ItemView {
         this.depthSlider.value = String(this.currentDepth);
         this.depthSlider.style.cssText = 'margin-right: 8px; flex-grow: 1;';
 
-        this.depthLabel = depthControl.createEl('span', { 
+        this.depthLabel = depthControl.createEl('span', {
             text: String(this.currentDepth)
         });
         this.depthLabel.style.cssText = 'min-width: 15px; text-align: center; font-size: 12px;';
 
-        const branchControl = slidersSection.createEl('div', { 
+        const branchControl = slidersSection.createEl('div', {
             cls: 'zettelkasten-control'
         });
         branchControl.style.cssText = 'display: flex; align-items: center; margin-bottom: 6px;';
 
-        branchControl.createEl('label', { 
+        branchControl.createEl('label', {
             text: 'Branches: '
         }).style.cssText = 'margin-right: 10px; min-width: 70px; font-size: 12px;';
 
@@ -720,17 +932,17 @@ class ZettelkastenBranchView extends ItemView {
         this.branchSlider.value = String(this.currentMaxBranches);
         this.branchSlider.style.cssText = 'margin-right: 8px; flex-grow: 1;';
 
-        this.branchLabel = branchControl.createEl('span', { 
+        this.branchLabel = branchControl.createEl('span', {
             text: String(this.currentMaxBranches)
         });
         this.branchLabel.style.cssText = 'min-width: 15px; text-align: center; font-size: 12px;';
 
-        const forceControl = slidersSection.createEl('div', { 
+        const forceControl = slidersSection.createEl('div', {
             cls: 'zettelkasten-control'
         });
         forceControl.style.cssText = 'display: flex; align-items: center; margin-bottom: 6px;';
 
-        forceControl.createEl('label', { 
+        forceControl.createEl('label', {
             text: 'Spacing: '
         }).style.cssText = 'margin-right: 10px; min-width: 70px; font-size: 12px; color: var(--text-normal);';
 
@@ -742,7 +954,7 @@ class ZettelkastenBranchView extends ItemView {
         this.forceSlider.value = '100';
         this.forceSlider.style.cssText = 'margin-right: 8px; flex-grow: 1;';
 
-        this.forceLabel = forceControl.createEl('span', { 
+        this.forceLabel = forceControl.createEl('span', {
             text: '100%'
         });
         this.forceLabel.style.cssText = 'min-width: 25px; text-align: center; font-size: 12px; color: var(--text-normal);';
@@ -765,7 +977,7 @@ class ZettelkastenBranchView extends ItemView {
         this.countCheckbox.checked = this.showSubnoteCounts;
         this.countCheckbox.style.cssText = 'margin-right: 6px;';
 
-        const countLabel = countControl.createEl('label', { 
+        const countLabel = countControl.createEl('label', {
             text: 'Show counts'
         });
         countLabel.style.cssText = 'font-size: 12px; color: var(--text-normal); cursor: pointer; white-space: nowrap;';
@@ -780,7 +992,7 @@ class ZettelkastenBranchView extends ItemView {
         this.autoUpdateCheckbox.checked = this.autoUpdate;
         this.autoUpdateCheckbox.style.cssText = 'margin-right: 6px;';
 
-        const autoUpdateLabel = autoUpdateControl.createEl('label', { 
+        const autoUpdateLabel = autoUpdateControl.createEl('label', {
             text: 'Auto-update'
         });
         autoUpdateLabel.style.cssText = 'font-size: 12px; color: var(--text-normal); cursor: pointer; white-space: nowrap;';
@@ -870,7 +1082,7 @@ class ZettelkastenBranchView extends ItemView {
     setupMouseEvents() {
         this.canvas.addEventListener('mousemove', (e) => {
             this.updateMousePosition(e);
-            
+
             if (this.isDragging) {
                 this.handleDrag();
             }
@@ -887,15 +1099,15 @@ class ZettelkastenBranchView extends ItemView {
         this.canvas.addEventListener('mouseup', (e) => {
             if (this.isDragging) {
                 const dragDistance = Math.sqrt(
-                    Math.pow(this.mousePos.x - this.dragStartPos.x, 2) + 
+                    Math.pow(this.mousePos.x - this.dragStartPos.x, 2) +
                     Math.pow(this.mousePos.y - this.dragStartPos.y, 2)
                 );
-                
+
                 if (dragDistance < 5) {
                     this.handleNodeClick(e);
                 }
             }
-            
+
             this.isDragging = false;
             this.canvas.style.cursor = this.hoveredNode ? 'pointer' : 'default';
         });
@@ -917,10 +1129,10 @@ class ZettelkastenBranchView extends ItemView {
 
     updateMousePosition(e) {
         const rect = this.canvas.getBoundingClientRect();
-        
+
         const scaleX = this.canvas.width / rect.width;
         const scaleY = this.canvas.height / rect.height;
-        
+
         this.mousePos = {
             x: (e.clientX - rect.left) * scaleX,
             y: (e.clientY - rect.top) * scaleY
@@ -929,13 +1141,13 @@ class ZettelkastenBranchView extends ItemView {
 
     handleDrag() {
         if (!this.isDragging || !this.dragStartPos) return;
-        
+
         const deltaX = this.mousePos.x - this.dragStartPos.x;
         const deltaY = this.mousePos.y - this.dragStartPos.y;
-        
+
         this.panOffset.x = this.lastPanOffset.x + deltaX;
         this.panOffset.y = this.lastPanOffset.y + deltaY;
-        
+
         this.needsRender = true;
     }
 
@@ -943,64 +1155,64 @@ class ZettelkastenBranchView extends ItemView {
         const animate = () => {
             this.updateHoverState();
             this.updateNodeAnimations();
-            
+
             if (this.needsRender) {
                 this.renderCurrentNetwork();
                 this.needsRender = false;
             }
-            
+
             this.animationId = requestAnimationFrame(animate);
         };
-        
+
         animate();
     }
 
     updateHoverState() {
         if (!this.network || this.isDragging) return;
-        
+
         const prevHovered = this.hoveredNode;
         this.hoveredNode = null;
-        
+
         const spacingMultiplier = this.getSpacingMultiplier();
         const centerX = this.canvas.width / 2 + this.panOffset.x;
         const centerY = this.canvas.height / 2 + this.panOffset.y;
-        
+
         for (const node of this.network.nodes.values()) {
             const nodeX = centerX + (node.position.x * this.zoom * spacingMultiplier);
             const nodeY = centerY + (node.position.y * this.zoom * spacingMultiplier);
             const hoverRadius = Math.max(12, 12 * this.zoom);
-            
+
             const dx = this.mousePos.x - nodeX;
             const dy = this.mousePos.y - nodeY;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            
+
             if (distance <= hoverRadius) {
                 this.hoveredNode = node;
                 break;
             }
         }
-        
+
         for (const node of this.network.nodes.values()) {
             const isHovered = this.hoveredNode === node;
-            
+
             if (node.isCenter) {
                 this.targetScales.set(node.id, 1.0);
                 this.nodeScales.set(node.id, 1.0);
             } else {
                 this.targetScales.set(node.id, isHovered ? 1.2 : 1.0);
-                
+
                 if (!this.nodeScales.has(node.id)) {
                     this.nodeScales.set(node.id, 1.0);
                 }
             }
-            
+
             this.targetTextOffsets.set(node.id, isHovered ? 3 : 0);
-            
+
             if (!this.textOffsets.has(node.id)) {
                 this.textOffsets.set(node.id, 0);
             }
         }
-        
+
         if (this.hoveredNode !== prevHovered) {
             this.canvas.style.cursor = this.hoveredNode ? 'pointer' : 'default';
             this.needsRender = true;
@@ -1009,14 +1221,14 @@ class ZettelkastenBranchView extends ItemView {
 
     updateNodeAnimations() {
         if (!this.network) return;
-        
+
         let hasAnimations = false;
-        
+
         for (const node of this.network.nodes.values()) {
             if (!node.isCenter) {
                 const currentScale = this.nodeScales.get(node.id) || 1.0;
                 const targetScale = this.targetScales.get(node.id) || 1.0;
-                
+
                 const scaleDiff = targetScale - currentScale;
                 if (Math.abs(scaleDiff) > 0.001) {
                     const newScale = currentScale + (scaleDiff * this.animationSpeed);
@@ -1026,10 +1238,10 @@ class ZettelkastenBranchView extends ItemView {
                     this.nodeScales.set(node.id, targetScale);
                 }
             }
-            
+
             const currentOffset = this.textOffsets.get(node.id) || 0;
             const targetOffset = this.targetTextOffsets.get(node.id) || 0;
-            
+
             const offsetDiff = targetOffset - currentOffset;
             if (Math.abs(offsetDiff) > 0.01) {
                 const newOffset = currentOffset + (offsetDiff * this.animationSpeed);
@@ -1039,7 +1251,7 @@ class ZettelkastenBranchView extends ItemView {
                 this.textOffsets.set(node.id, targetOffset);
             }
         }
-        
+
         if (hasAnimations) {
             this.needsRender = true;
         }
@@ -1087,26 +1299,26 @@ class ZettelkastenBranchView extends ItemView {
 
     getComplementaryHoverColor(originalColor) {
         const [h, s, l] = this.hexToHsl(originalColor);
-        
+
         let newHue = (h + 180) % 360;
         let newSat = Math.min(s + 20, 90);
         let newLight = Math.max(30, Math.min(l + 15, 70));
-        
+
         if (l > 70) {
             newLight = l - 25;
             newSat = Math.min(s + 30, 85);
         }
-        
+
         if (l < 30) {
             newLight = l + 30;
         }
-        
+
         return this.hslToHex(newHue, newSat, newLight);
     }
 
     handleNodeClick(event) {
         if (!this.hoveredNode) return;
-        
+
         const file = this.plugin.getZettelNotes().get(this.hoveredNode.id);
         if (file) {
             if (event && (event.ctrlKey || event.metaKey)) {
@@ -1114,16 +1326,16 @@ class ZettelkastenBranchView extends ItemView {
                 this.app.workspace.getLeaf('tab').openFile(file);
             } else {
                 // Regular click: open in current active tab
-                const activeLeaf = this.app.workspace.getActiveViewOfType(require('obsidian').MarkdownView)?.leaf || 
-                                  this.app.workspace.getMostRecentLeaf();
-                
+                const activeLeaf = this.app.workspace.getActiveViewOfType(require('obsidian').MarkdownView)?.leaf ||
+                    this.app.workspace.getMostRecentLeaf();
+
                 if (activeLeaf) {
                     activeLeaf.openFile(file);
                 } else {
                     // Fallback: if no active leaf found, create new one
                     this.app.workspace.getLeaf(true).openFile(file);
                 }
-                
+
                 // If auto-update is enabled, update the graph immediately
                 if (this.autoUpdate) {
                     // Small delay to ensure the file change is processed
@@ -1137,13 +1349,13 @@ class ZettelkastenBranchView extends ItemView {
 
     resizeCanvas() {
         if (!this.canvas || !this.canvas.parentElement) return;
-        
+
         const container = this.canvas.parentElement;
         const rect = container.getBoundingClientRect();
-        
+
         const newWidth = Math.max(200, Math.floor(rect.width));
         const newHeight = Math.max(150, Math.floor(rect.height));
-        
+
         if (this.canvas.width !== newWidth || this.canvas.height !== newHeight) {
             this.canvas.width = newWidth;
             this.canvas.height = newHeight;
@@ -1162,14 +1374,14 @@ class ZettelkastenBranchView extends ItemView {
         }
 
         this.network = this.plugin.buildZettelNetwork(zettelId, this.currentDepth, this.currentMaxBranches);
-        
+
         this.nodeScales.clear();
         this.targetScales.clear();
         this.textOffsets.clear();
         this.targetTextOffsets.clear();
-        
+
         this.panOffset = { x: 0, y: 0 };
-        
+
         this.needsRender = true;
     }
 
@@ -1191,7 +1403,7 @@ class ZettelkastenBranchView extends ItemView {
 
     renderNetwork(network) {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
+
         const centerX = this.canvas.width / 2 + this.panOffset.x;
         const centerY = this.canvas.height / 2 + this.panOffset.y;
         const spacingMultiplier = this.getSpacingMultiplier();
@@ -1199,23 +1411,23 @@ class ZettelkastenBranchView extends ItemView {
         network.edges.forEach(edge => {
             const fromNode = network.nodes.get(edge.from);
             const toNode = network.nodes.get(edge.to);
-            
+
             if (fromNode && toNode) {
                 const fromX = centerX + (fromNode.position.x * this.zoom * spacingMultiplier);
                 const fromY = centerY + (fromNode.position.y * this.zoom * spacingMultiplier);
                 const toX = centerX + (toNode.position.x * this.zoom * spacingMultiplier);
                 const toY = centerY + (toNode.position.y * this.zoom * spacingMultiplier);
-                
+
                 this.ctx.beginPath();
                 this.ctx.strokeStyle = '#CCCCCC';
                 this.ctx.lineWidth = 1;
-                
+
                 if (edge.type === 'linear-continuation') {
                     this.ctx.setLineDash([3, 3]);
                 } else {
                     this.ctx.setLineDash([]);
                 }
-                
+
                 this.ctx.moveTo(fromX, fromY);
                 this.ctx.lineTo(toX, toY);
                 this.ctx.stroke();
@@ -1240,18 +1452,18 @@ class ZettelkastenBranchView extends ItemView {
     drawNode(node, centerX, centerY, spacingMultiplier) {
         const x = centerX + (node.position.x * this.zoom * spacingMultiplier);
         const y = centerY + (node.position.y * this.zoom * spacingMultiplier);
-        
+
         // Calculate base radius
         let baseRadius = Math.max(4, 8 * this.zoom);
-        
+
         // Apply size scaling based on depth for multiple node types
         if ((node.level === 1 || node.level === -1 || node.level === -2 || node.level === 0) && node.depthScore !== undefined) {
             const sizeMultiplier = 1.0 + (node.depthScore * 1.5);
             baseRadius = baseRadius * sizeMultiplier;
         }
-        
+
         let radius = baseRadius;
-        
+
         // Apply hover scaling (but not for center node and not conflicting with depth scaling)
         if (!node.isCenter && ![1, -2, 0].includes(node.level)) {
             const scale = this.nodeScales.get(node.id) || 1.0;
@@ -1261,9 +1473,9 @@ class ZettelkastenBranchView extends ItemView {
             const hoverScale = this.nodeScales.get(node.id) || 1.0;
             radius = baseRadius * hoverScale;
         }
-        
+
         let fillColor;
-        
+
         if (node.isCenter) {
             fillColor = '#4F8EDB';
         } else {
@@ -1290,7 +1502,7 @@ class ZettelkastenBranchView extends ItemView {
                     fillColor = '#95A5A6';
             }
         }
-        
+
         if (this.hoveredNode === node) {
             fillColor = this.getComplementaryHoverColor(fillColor);
         }
@@ -1300,7 +1512,7 @@ class ZettelkastenBranchView extends ItemView {
         this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
-        
+
         // Add a subtle border for nodes with significant content
         if ([1, -2, 0].includes(node.level) && node.depthScore !== undefined && node.depthScore > 0.3) {
             this.ctx.beginPath();
@@ -1314,10 +1526,10 @@ class ZettelkastenBranchView extends ItemView {
     drawLabel(node, centerX, centerY, spacingMultiplier) {
         const x = centerX + (node.position.x * this.zoom * spacingMultiplier);
         const nodeY = centerY + (node.position.y * this.zoom * spacingMultiplier);
-        
+
         // Calculate the actual node radius (same logic as in drawNode)
         let baseRadius = Math.max(4, 8 * this.zoom);
-        
+
         // Apply size scaling based on depth for multiple node types
         if ((node.level === 1 || node.level === -1 || node.level === -2 || node.level === 0) && node.depthScore !== undefined) {
             const sizeMultiplier = 1.0 + (node.depthScore * 1.5);
@@ -1350,20 +1562,20 @@ class ZettelkastenBranchView extends ItemView {
 
         if (baseOpacity > 0.05) {
             this.ctx.save();
-            
+
             this.ctx.fillStyle = `rgba(51, 51, 51, ${baseOpacity})`;
-            
+
             const fontSize = Math.max(8, 11 * this.zoom);
             const fontWeight = this.hoveredNode === node ? 'bold' : 'normal';
             this.ctx.font = `${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-            
+
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'alphabetic';
-            
+
             const adjustedY = y + (fontSize * 0.3);
-            
+
             this.ctx.fillText(node.id, x, adjustedY);
-            
+
             this.ctx.restore();
         }
     }
@@ -1371,21 +1583,21 @@ class ZettelkastenBranchView extends ItemView {
     drawSubnoteCount(node, centerX, centerY, spacingMultiplier) {
         // Only show counts for nodes that have depth scores and if enabled
         if (!this.showSubnoteCounts || node.subnotesCount === undefined) return;
-        
+
         const x = centerX + (node.position.x * this.zoom * spacingMultiplier);
         const y = centerY + (node.position.y * this.zoom * spacingMultiplier);
-        
+
         // Calculate the same radius as drawNode
         let baseRadius = Math.max(4, 8 * this.zoom);
-        
+
         // Apply size scaling
         if ((node.level === 1 || node.level === -1 || node.level === -2 || node.level === 0) && node.depthScore !== undefined) {
             const sizeMultiplier = 1.0 + (node.depthScore * 1.5);
             baseRadius = baseRadius * sizeMultiplier;
         }
-        
+
         let actualRadius = baseRadius;
-        
+
         // Apply hover scaling
         if (!node.isCenter && ![1, -1, -2, 0].includes(node.level)) {
             const scale = this.nodeScales.get(node.id) || 1.0;
@@ -1394,33 +1606,33 @@ class ZettelkastenBranchView extends ItemView {
             const hoverScale = this.nodeScales.get(node.id) || 1.0;
             actualRadius = baseRadius * hoverScale;
         }
-        
+
         // Only show count if node is big enough
         if (actualRadius < 12) {
             return;
         }
-        
+
         // Calculate appropriate font size based on node size
         const fontSize = Math.max(8, Math.min(actualRadius * 0.6, 16));
-        
+
         this.ctx.save();
-        
+
         // Set font
         this.ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        
+
         // Use contrasting text color
         this.ctx.fillStyle = 'white';
         this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
         this.ctx.lineWidth = 1;
-        
+
         const countText = String(node.subnotesCount);
-        
+
         // Draw text with outline for better visibility
         this.ctx.strokeText(countText, x, y);
         this.ctx.fillText(countText, x, y);
-        
+
         this.ctx.restore();
     }
 
@@ -1429,7 +1641,7 @@ class ZettelkastenBranchView extends ItemView {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
-        
+
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
         }
