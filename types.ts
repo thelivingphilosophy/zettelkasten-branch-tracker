@@ -8,6 +8,7 @@ export interface ZettelNode {
     position: { x: number; y: number };
     subnotesCount?: number;
     depthScore?: number;
+    animationPhase?: number; // For pulsing animation (0-1)
 }
 
 export interface ZettelEdge {

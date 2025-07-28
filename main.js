@@ -685,6 +685,7 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
     this.textOffsets = /* @__PURE__ */ new Map();
     this.targetTextOffsets = /* @__PURE__ */ new Map();
     this.animationSpeed = 0.15;
+    this.animationTime = 0;
     this.animationId = null;
     this.needsRender = true;
   }
@@ -992,6 +993,11 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
     if (!this.network)
       return;
     let hasAnimations = false;
+    this.animationTime += 0.02;
+    if (this.animationTime > Math.PI * 2) {
+      this.animationTime = 0;
+    }
+    this.needsRender = true;
     for (const node of this.network.nodes.values()) {
       if (!node.isCenter) {
         const currentScale = this.nodeScales.get(node.id) || 1;
@@ -1061,6 +1067,20 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
       return Math.round(255 * color).toString(16).padStart(2, "0");
     };
     return `#${f(0)}${f(8)}${f(4)}`;
+  }
+  isDarkTheme() {
+    return document.body.classList.contains("theme-dark");
+  }
+  getThemeTextColor() {
+    return this.isDarkTheme() ? "#DCDDDE" : "#383A42";
+  }
+  hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
   }
   getComplementaryHoverColor(originalColor) {
     const [h, s, l] = this.hexToHsl(originalColor);
@@ -1198,7 +1218,7 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
     }
     let fillColor;
     if (node.isCenter) {
-      fillColor = "#4F8EDB";
+      fillColor = this.isDarkTheme() ? "#FFFFFF" : "#000000";
     } else {
       switch (node.level) {
         case -4:
@@ -1226,11 +1246,53 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
     if (this.hoveredNode === node) {
       fillColor = this.getComplementaryHoverColor(fillColor);
     }
-    this.ctx.beginPath();
-    this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
-    this.ctx.fillStyle = fillColor;
-    this.ctx.fill();
-    if ([1, -2, 0].includes(node.level) && node.depthScore !== void 0 && node.depthScore > 0.3) {
+    if (node.isCenter) {
+      const pulseIntensity = (Math.sin(this.animationTime) + 1) / 2;
+      const squareSize = radius * 1.4;
+      const glowSize = squareSize + pulseIntensity * 12 + 8;
+      const glowColor = this.isDarkTheme() ? "#FFFFFF" : "#000000";
+      const glowOpacity = 0.3 + pulseIntensity * 0.3;
+      const outerGradient = this.ctx.createRadialGradient(x, y, squareSize, x, y, glowSize);
+      outerGradient.addColorStop(0, glowColor + Math.floor(glowOpacity * 255).toString(16).padStart(2, "0"));
+      outerGradient.addColorStop(0.5, glowColor + Math.floor(glowOpacity * 0.5 * 255).toString(16).padStart(2, "0"));
+      outerGradient.addColorStop(1, glowColor + "00");
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, glowSize, 0, 2 * Math.PI);
+      this.ctx.fillStyle = outerGradient;
+      this.ctx.fill();
+      const innerGradient = this.ctx.createRadialGradient(x, y, squareSize * 0.8, x, y, squareSize * 1.2);
+      innerGradient.addColorStop(0, glowColor + Math.floor(glowOpacity * 0.8 * 255).toString(16).padStart(2, "0"));
+      innerGradient.addColorStop(1, glowColor + "00");
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, squareSize * 1.2, 0, 2 * Math.PI);
+      this.ctx.fillStyle = innerGradient;
+      this.ctx.fill();
+      this.ctx.shadowColor = glowColor;
+      this.ctx.shadowBlur = 8 + pulseIntensity * 4;
+      this.ctx.shadowOffsetX = 0;
+      this.ctx.shadowOffsetY = 0;
+      this.ctx.beginPath();
+      this.ctx.rect(x - squareSize, y - squareSize, squareSize * 2, squareSize * 2);
+      this.ctx.fillStyle = fillColor;
+      this.ctx.fill();
+      this.ctx.shadowColor = "transparent";
+      this.ctx.shadowBlur = 0;
+    } else {
+      const subtleGlowSize = radius + 4;
+      const subtleGradient = this.ctx.createRadialGradient(x, y, radius, x, y, subtleGlowSize);
+      subtleGradient.addColorStop(0, fillColor + "60");
+      subtleGradient.addColorStop(0.5, fillColor + "40");
+      subtleGradient.addColorStop(1, fillColor + "00");
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, subtleGlowSize, 0, 2 * Math.PI);
+      this.ctx.fillStyle = subtleGradient;
+      this.ctx.fill();
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
+      this.ctx.fillStyle = fillColor;
+      this.ctx.fill();
+    }
+    if (!node.isCenter && [1, -2, 0].includes(node.level) && node.depthScore !== void 0 && node.depthScore > 0.3) {
       this.ctx.beginPath();
       this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
       this.ctx.strokeStyle = "#444444";
@@ -1254,7 +1316,10 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
       const hoverScale = this.nodeScales.get(node.id) || 1;
       actualRadius = baseRadius * hoverScale;
     }
-    const textPadding = Math.max(6, 9 * this.zoom);
+    if (node.isCenter) {
+      actualRadius = baseRadius * 1.4;
+    }
+    const textPadding = node.isCenter ? Math.max(12, 18 * this.zoom) : Math.max(6, 9 * this.zoom);
     const baseY = nodeY + actualRadius + textPadding;
     const textOffset = this.textOffsets.get(node.id) || 0;
     const y = baseY + textOffset;
@@ -1264,7 +1329,9 @@ var ZettelkastenBranchView = class extends import_obsidian.ItemView {
     }
     if (baseOpacity > 0.05) {
       this.ctx.save();
-      this.ctx.fillStyle = `rgba(51, 51, 51, ${baseOpacity})`;
+      const textColor = this.getThemeTextColor();
+      const rgb = this.hexToRgb(textColor);
+      this.ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${baseOpacity})`;
       const fontSize = Math.max(8, 11 * this.zoom);
       const fontWeight = this.hoveredNode === node ? "bold" : "normal";
       this.ctx.font = `${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
