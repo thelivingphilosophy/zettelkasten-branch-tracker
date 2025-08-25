@@ -836,6 +836,7 @@ class ZettelkastenBranchView extends ItemView {
         this.animationId = null;
         this.needsRender = true;
         this.debugOnce = true; // For debugging colors
+        this.animationStartTime = Date.now(); // For pulsing animations
     }
 
     getViewType() {
@@ -1236,6 +1237,15 @@ class ZettelkastenBranchView extends ItemView {
 
         let hasAnimations = false;
 
+        // Check if we have a center node (which is always animating with pulse)
+        let hasCenterNode = false;
+        for (const node of this.network.nodes.values()) {
+            if (node.isCenter) {
+                hasCenterNode = true;
+                break;
+            }
+        }
+
         for (const node of this.network.nodes.values()) {
             if (!node.isCenter) {
                 const currentScale = this.nodeScales.get(node.id) || 1.0;
@@ -1264,13 +1274,22 @@ class ZettelkastenBranchView extends ItemView {
             }
         }
 
-        if (hasAnimations) {
+        // Always render if we have a center node (for pulsing glow) or other animations
+        if (hasAnimations || hasCenterNode) {
             this.needsRender = true;
         }
     }
 
     getSpacingMultiplier() {
         return this.forceSlider ? parseInt(this.forceSlider.value) / 100 : 1;
+    }
+
+    // Helper function to convert hex colors to RGB for gradient effects
+    hexToRgb(hex) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return { r, g, b };
     }
 
 
@@ -1473,19 +1492,85 @@ class ZettelkastenBranchView extends ItemView {
                         fillColor === '#C4A484' ? '#E4C4A4' : '#B0C0D0';
         }
 
-        // Draw the main node
-        this.ctx.beginPath();
-        this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
-        this.ctx.fillStyle = fillColor;
-        this.ctx.fill();
+        // Draw glow effects and the main node
+        if (node.isCenter) {
+            // CENTER NODE: Square with pulsing glow
+            const currentTime = Date.now();
+            const animationTime = (currentTime - this.animationStartTime) / 1000; // Convert to seconds
+            const pulseIntensity = (Math.sin(animationTime * 2) + 1) / 2; // 0 to 1, pulses twice per second
 
-        // Add a subtle border for nodes with significant content
-        if ([1, -2, 0].includes(node.level) && node.depthScore !== undefined && node.depthScore > 0.3) {
+            const squareSize = radius * 3.0; // Much bigger center node (3x instead of 1.4x)
+            const glowSize = squareSize + (pulseIntensity * 4) + 3; // Smaller, more subtle glow
+
+            // Draw multiple glow layers for stronger effect
+            const baseGlowOpacity = 0.05 + (pulseIntensity * 0.05); // Much more subtle glow opacity
+            const rgb = this.hexToRgb(fillColor);
+
+            // Outer glow layer
+            const outerGradient = this.ctx.createRadialGradient(x, y, squareSize * 0.7, x, y, glowSize);
+            outerGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${baseGlowOpacity})`);
+            outerGradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${baseGlowOpacity * 0.5})`);
+            outerGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, glowSize, 0, 2 * Math.PI);
+            this.ctx.fillStyle = outerGradient;
+            this.ctx.fill();
+
+            // Inner glow layer for more intensity
+            const innerGradient = this.ctx.createRadialGradient(x, y, squareSize * 0.5, x, y, squareSize);
+            innerGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${baseGlowOpacity * 0.8})`);
+            innerGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, squareSize, 0, 2 * Math.PI);
+            this.ctx.fillStyle = innerGradient;
+            this.ctx.fill();
+
+            // Draw the square with shadow
+            this.ctx.shadowColor = fillColor;
+            this.ctx.shadowBlur = 2 + (pulseIntensity * 2); // Reduced shadow blur
+            this.ctx.shadowOffsetX = 0;
+            this.ctx.shadowOffsetY = 0;
+
+            this.ctx.beginPath();
+            this.ctx.rect(x - squareSize / 2, y - squareSize / 2, squareSize, squareSize);
+            this.ctx.fillStyle = fillColor;
+            this.ctx.fill();
+
+            // Reset shadow
+            this.ctx.shadowColor = 'transparent';
+            this.ctx.shadowBlur = 0;
+
+        } else {
+            // REGULAR NODES: Circles with subtle glow
+            const subtleGlowSize = radius + 2; // Smaller glow radius (2px instead of 4px)
+            const rgb = this.hexToRgb(fillColor);
+
+            // Draw subtle glow effect
+            const subtleGradient = this.ctx.createRadialGradient(x, y, radius * 0.9, x, y, subtleGlowSize);
+            subtleGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.04)`); // Even more subtle opacity
+            subtleGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, subtleGlowSize, 0, 2 * Math.PI);
+            this.ctx.fillStyle = subtleGradient;
+            this.ctx.fill();
+
+            // Draw the main circle
             this.ctx.beginPath();
             this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
-            this.ctx.strokeStyle = '#444444';
-            this.ctx.lineWidth = Math.max(0.5, 1 * this.zoom);
-            this.ctx.stroke();
+            this.ctx.fillStyle = fillColor;
+            this.ctx.fill();
+
+            // Add a subtle border for nodes with significant content
+            if ([1, -2, 0].includes(node.level) && node.depthScore !== undefined && node.depthScore > 0.3) {
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                this.ctx.strokeStyle = '#444444';
+                this.ctx.lineWidth = Math.max(0.5, 1 * this.zoom);
+                this.ctx.stroke();
+            }
         }
     }
 
@@ -1513,8 +1598,15 @@ class ZettelkastenBranchView extends ItemView {
             actualRadius = baseRadius * hoverScale;
         }
 
-        // Position text below the actual node size (with moderate padding)
-        const textPadding = Math.max(6, 9 * this.zoom); // Extra space between node and text
+        // For center nodes, account for the larger square size and glow
+        if (node.isCenter) {
+            actualRadius = baseRadius * 3.0; // Much larger square size multiplier
+        }
+
+        // Position text below the actual node size with extra padding for center nodes  
+        const textPadding = node.isCenter 
+            ? Math.max(8, 12 * this.zoom) // Closer text for center node
+            : Math.max(6, 9 * this.zoom);   // Regular padding for other nodes
         const baseY = nodeY + actualRadius + textPadding;
 
         const textOffset = this.textOffsets.get(node.id) || 0;
