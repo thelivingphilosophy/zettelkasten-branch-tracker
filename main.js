@@ -16,13 +16,13 @@ class ZettelkastenBranchTracker extends Plugin {
             (leaf) => new ZettelkastenBranchView(leaf, this)
         );
 
-        this.addRibbonIcon('git-branch', 'Zettelkasten Branch Tracker', () => {
+        this.addRibbonIcon('git-branch', 'Zettelkasten branch tracker', () => {
             this.activateView();
         });
 
         this.addCommand({
             id: 'open-zettelkasten-branch-view',
-            name: 'Open Zettelkasten Branch View',
+            name: 'Open Zettelkasten branch view',
             callback: () => {
                 this.activateView();
             }
@@ -842,7 +842,7 @@ class ZettelkastenBranchView extends ItemView {
     }
 
     getDisplayText() {
-        return 'Zettelkasten Branch Tracker';
+        return 'Zettelkasten branch tracker';
     }
 
     async onOpen() {
@@ -1657,8 +1657,6 @@ class ZettelkastenSettingTab extends PluginSettingTab {
     display() {
         const { containerEl } = this;
         containerEl.empty();
-
-        containerEl.createEl('h2', { text: 'Zettelkasten Branch Tracker Settings' });
 
         new Setting(containerEl)
             .setName('Default maximum depth')

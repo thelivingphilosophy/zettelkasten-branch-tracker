@@ -4,8 +4,8 @@
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Track and visualize the branching structure of your Zettelkasten notes",
-	"author": "Your Name",
-	"authorUrl": "",
+	"author": "James Cussen",
+	"authorUrl": "https://thelivingphilosophy.com",
 	"fundingUrl": "",
 	"isDesktopOnly": false
 }
