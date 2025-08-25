@@ -16,7 +16,7 @@ class ZettelkastenBranchTracker extends Plugin {
             (leaf) => new ZettelkastenBranchView(leaf, this)
         );
 
-        this.addRibbonIcon('git-branch', 'Zettelkasten branch tracker', () => {
+        this.addRibbonIcon('signpost-big', 'Zettelkasten branch tracker', () => {
             this.activateView();
         });
 
@@ -835,6 +835,7 @@ class ZettelkastenBranchView extends ItemView {
 
         this.animationId = null;
         this.needsRender = true;
+        this.debugOnce = true; // For debugging colors
     }
 
     getViewType() {
@@ -845,6 +846,10 @@ class ZettelkastenBranchView extends ItemView {
         return 'Zettelkasten branch tracker';
     }
 
+    getIcon() {
+        return 'signpost-big';
+    }
+
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
@@ -852,22 +857,23 @@ class ZettelkastenBranchView extends ItemView {
         const controlsSection = container.createEl('div', {
             cls: 'zettelkasten-controls-section'
         });
-        controlsSection.style.cssText = 'border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary);';
+        // Styles handled by CSS
 
         const controlsHeader = controlsSection.createEl('div', {
             cls: 'zettelkasten-controls-header'
         });
-        controlsHeader.style.cssText = 'display: flex; align-items: center; padding: 8px 10px; cursor: pointer; user-select: none;';
+        // Styles handled by CSS
 
-        const toggleIcon = controlsHeader.createEl('span', { text: '▼' });
-        toggleIcon.style.cssText = 'margin-right: 8px; transition: transform 0.2s; font-size: 12px;';
+        const toggleIcon = controlsHeader.createEl('span', { 
+            text: '▼',
+            cls: 'zettelkasten-toggle-icon'
+        });
 
         controlsHeader.createEl('span', { text: 'Controls' });
 
         const controlsContainer = controlsSection.createEl('div', {
-            cls: 'zettelkasten-controls'
+            cls: 'zettelkasten-controls-container'
         });
-        controlsContainer.style.cssText = 'padding: 8px 10px; display: block;';
 
         let controlsExpanded = true;
         controlsHeader.addEventListener('click', () => {
@@ -890,17 +896,18 @@ class ZettelkastenBranchView extends ItemView {
         });
 
         // SLIDERS SECTION
-        const slidersSection = controlsContainer.createEl('div');
-        slidersSection.style.cssText = 'margin-bottom: 12px;';
+        const slidersSection = controlsContainer.createEl('div', {
+            cls: 'zettelkasten-sliders-section'
+        });
 
         const depthControl = slidersSection.createEl('div', {
-            cls: 'zettelkasten-control'
+            cls: 'zettelkasten-control-row'
         });
-        depthControl.style.cssText = 'display: flex; align-items: center; margin-bottom: 6px;';
 
         depthControl.createEl('label', {
-            text: 'Depth: '
-        }).style.cssText = 'margin-right: 10px; min-width: 70px; font-size: 12px;';
+            text: 'Depth: ',
+            cls: 'zettelkasten-control-label'
+        });
 
         this.depthSlider = depthControl.createEl('input', {
             type: 'range'
@@ -908,21 +915,21 @@ class ZettelkastenBranchView extends ItemView {
         this.depthSlider.min = '1';
         this.depthSlider.max = '3';
         this.depthSlider.value = String(this.currentDepth);
-        this.depthSlider.style.cssText = 'margin-right: 8px; flex-grow: 1;';
+        this.depthSlider.className = 'zettelkasten-slider';
 
         this.depthLabel = depthControl.createEl('span', {
             text: String(this.currentDepth)
         });
-        this.depthLabel.style.cssText = 'min-width: 15px; text-align: center; font-size: 12px;';
+        this.depthLabel.className = 'zettelkasten-value-label';
 
         const branchControl = slidersSection.createEl('div', {
-            cls: 'zettelkasten-control'
+            cls: 'zettelkasten-control-row'
         });
-        branchControl.style.cssText = 'display: flex; align-items: center; margin-bottom: 6px;';
 
         branchControl.createEl('label', {
-            text: 'Branches: '
-        }).style.cssText = 'margin-right: 10px; min-width: 70px; font-size: 12px;';
+            text: 'Branches: ',
+            cls: 'zettelkasten-control-label'
+        });
 
         this.branchSlider = branchControl.createEl('input', {
             type: 'range'
@@ -930,21 +937,21 @@ class ZettelkastenBranchView extends ItemView {
         this.branchSlider.min = '1';
         this.branchSlider.max = '10';
         this.branchSlider.value = String(this.currentMaxBranches);
-        this.branchSlider.style.cssText = 'margin-right: 8px; flex-grow: 1;';
+        this.branchSlider.className = 'zettelkasten-slider';
 
         this.branchLabel = branchControl.createEl('span', {
             text: String(this.currentMaxBranches)
         });
-        this.branchLabel.style.cssText = 'min-width: 15px; text-align: center; font-size: 12px;';
+        this.branchLabel.className = 'zettelkasten-value-label';
 
         const forceControl = slidersSection.createEl('div', {
-            cls: 'zettelkasten-control'
+            cls: 'zettelkasten-control-row'
         });
-        forceControl.style.cssText = 'display: flex; align-items: center; margin-bottom: 6px;';
 
         forceControl.createEl('label', {
-            text: 'Spacing: '
-        }).style.cssText = 'margin-right: 10px; min-width: 70px; font-size: 12px; color: var(--text-normal);';
+            text: 'Spacing: ',
+            cls: 'zettelkasten-control-label'
+        });
 
         this.forceSlider = forceControl.createEl('input', {
             type: 'range'
@@ -952,50 +959,54 @@ class ZettelkastenBranchView extends ItemView {
         this.forceSlider.min = '50';
         this.forceSlider.max = '200';
         this.forceSlider.value = '100';
-        this.forceSlider.style.cssText = 'margin-right: 8px; flex-grow: 1;';
+        this.forceSlider.className = 'zettelkasten-slider';
 
         this.forceLabel = forceControl.createEl('span', {
             text: '100%'
         });
-        this.forceLabel.style.cssText = 'min-width: 25px; text-align: center; font-size: 12px; color: var(--text-normal);';
+        this.forceLabel.className = 'zettelkasten-force-value-label';
 
         // DIVIDER
-        const divider = controlsContainer.createEl('div');
-        divider.style.cssText = 'height: 1px; background: var(--background-modifier-border); margin: 8px 0;';
+        const divider = controlsContainer.createEl('div', {
+            cls: 'zettelkasten-divider'
+        });
 
         // CHECKBOXES SECTION - RESPONSIVE SIDE-BY-SIDE
-        const checkboxSection = controlsContainer.createEl('div');
-        checkboxSection.style.cssText = 'display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center;';
+        const checkboxSection = controlsContainer.createEl('div', {
+            cls: 'zettelkasten-checkbox-section'
+        });
 
         // Subnote counts checkbox
-        const countControl = checkboxSection.createEl('div');
-        countControl.style.cssText = 'display: flex; align-items: center; min-width: 140px;';
+        const countControl = checkboxSection.createEl('div', {
+            cls: 'zettelkasten-checkbox-control'
+        });
 
         this.countCheckbox = countControl.createEl('input', {
             type: 'checkbox'
         });
         this.countCheckbox.checked = this.showSubnoteCounts;
-        this.countCheckbox.style.cssText = 'margin-right: 6px;';
+        this.countCheckbox.className = 'zettelkasten-checkbox';
 
         const countLabel = countControl.createEl('label', {
             text: 'Show counts'
         });
-        countLabel.style.cssText = 'font-size: 12px; color: var(--text-normal); cursor: pointer; white-space: nowrap;';
+        countLabel.className = 'zettelkasten-checkbox-label';
 
         // Auto-update checkbox
-        const autoUpdateControl = checkboxSection.createEl('div');
-        autoUpdateControl.style.cssText = 'display: flex; align-items: center; min-width: 120px;';
+        const autoUpdateControl = checkboxSection.createEl('div', {
+            cls: 'zettelkasten-checkbox-control auto-update'
+        });
 
         this.autoUpdateCheckbox = autoUpdateControl.createEl('input', {
             type: 'checkbox'
         });
         this.autoUpdateCheckbox.checked = this.autoUpdate;
-        this.autoUpdateCheckbox.style.cssText = 'margin-right: 6px;';
+        this.autoUpdateCheckbox.className = 'zettelkasten-checkbox';
 
         const autoUpdateLabel = autoUpdateControl.createEl('label', {
             text: 'Auto-update'
         });
-        autoUpdateLabel.style.cssText = 'font-size: 12px; color: var(--text-normal); cursor: pointer; white-space: nowrap;';
+        autoUpdateLabel.className = 'zettelkasten-checkbox-label';
 
         // Event listeners for sliders
         this.depthSlider.addEventListener('input', (e) => {
@@ -1037,8 +1048,9 @@ class ZettelkastenBranchView extends ItemView {
             this.autoUpdate = e.target.checked;
         });
 
-        const canvasContainer = container.createEl('div');
-        canvasContainer.style.cssText = 'position: relative; overflow: hidden;';
+        const canvasContainer = container.createEl('div', {
+            cls: 'zettelkasten-canvas-container'
+        });
 
         this.updateCanvasContainerSize = () => {
             const containerRect = container.getBoundingClientRect();
@@ -1052,7 +1064,7 @@ class ZettelkastenBranchView extends ItemView {
 
         this.canvas = canvasContainer.createEl('canvas');
         this.ctx = this.canvas.getContext('2d');
-        this.canvas.style.cssText = 'width: 100%; height: 100%; cursor: default; display: block;';
+        this.canvas.className = 'zettelkasten-canvas';
 
         this.setupMouseEvents();
 
@@ -1261,60 +1273,7 @@ class ZettelkastenBranchView extends ItemView {
         return this.forceSlider ? parseInt(this.forceSlider.value) / 100 : 1;
     }
 
-    hexToHsl(hex) {
-        const r = parseInt(hex.slice(1, 3), 16) / 255;
-        const g = parseInt(hex.slice(3, 5), 16) / 255;
-        const b = parseInt(hex.slice(5, 7), 16) / 255;
 
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        let h, s, l = (max + min) / 2;
-
-        if (max === min) {
-            h = s = 0;
-        } else {
-            const d = max - min;
-            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-            switch (max) {
-                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                case g: h = (b - r) / d + 2; break;
-                case b: h = (r - g) / d + 4; break;
-            }
-            h /= 6;
-        }
-
-        return [h * 360, s * 100, l * 100];
-    }
-
-    hslToHex(h, s, l) {
-        l /= 100;
-        const a = s * Math.min(l, 1 - l) / 100;
-        const f = n => {
-            const k = (n + h / 30) % 12;
-            const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-            return Math.round(255 * color).toString(16).padStart(2, '0');
-        };
-        return `#${f(0)}${f(8)}${f(4)}`;
-    }
-
-    getComplementaryHoverColor(originalColor) {
-        const [h, s, l] = this.hexToHsl(originalColor);
-
-        let newHue = (h + 180) % 360;
-        let newSat = Math.min(s + 20, 90);
-        let newLight = Math.max(30, Math.min(l + 15, 70));
-
-        if (l > 70) {
-            newLight = l - 25;
-            newSat = Math.min(s + 30, 85);
-        }
-
-        if (l < 30) {
-            newLight = l + 30;
-        }
-
-        return this.hslToHex(newHue, newSat, newLight);
-    }
 
     handleNodeClick(event) {
         if (!this.hoveredNode) return;
@@ -1395,7 +1354,7 @@ class ZettelkastenBranchView extends ItemView {
 
     renderEmpty() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.fillStyle = '#999999';
+        this.ctx.fillStyle = '#333333';
         this.ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText('Current note is not a Zettelkasten note', this.canvas.width / 2, this.canvas.height / 2);
@@ -1504,7 +1463,14 @@ class ZettelkastenBranchView extends ItemView {
         }
 
         if (this.hoveredNode === node) {
-            fillColor = this.getComplementaryHoverColor(fillColor);
+            // Create hover effect by brightening the color
+            fillColor = fillColor === '#4F8EDB' ? '#6FAEFB' : 
+                        fillColor === '#7B9FA3' ? '#9BBFC3' :
+                        fillColor === '#6B9BD1' ? '#8BBBF1' :
+                        fillColor === '#8B7EC8' ? '#AB9EE8' :
+                        fillColor === '#9FABB8' ? '#BFCBD8' :
+                        fillColor === '#7BA3A0' ? '#9BC3C0' :
+                        fillColor === '#C4A484' ? '#E4C4A4' : '#B0C0D0';
         }
 
         // Draw the main node
@@ -1563,7 +1529,9 @@ class ZettelkastenBranchView extends ItemView {
         if (baseOpacity > 0.05) {
             this.ctx.save();
 
-            this.ctx.fillStyle = `rgba(51, 51, 51, ${baseOpacity})`;
+            const textColor = '#333333';
+            const rgb = textColor === '#ffffff' ? '255, 255, 255' : '44, 44, 44';
+            this.ctx.fillStyle = `rgba(${rgb}, ${baseOpacity})`;
 
             const fontSize = Math.max(8, 11 * this.zoom);
             const fontWeight = this.hoveredNode === node ? 'bold' : 'normal';

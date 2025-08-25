@@ -7,5 +7,6 @@
 	"author": "James Cussen",
 	"authorUrl": "https://thelivingphilosophy.com",
 	"fundingUrl": "",
-	"isDesktopOnly": false
+	"isDesktopOnly": false,
+	"css": "styles.css"
 }
